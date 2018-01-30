@@ -1,0 +1,130 @@
+tax
+ข้อมูลทดสอบ เลขที่ลูกค้า(Billing Account):611000999
+800000372
+800049991
+http://10.36.10.16:8080/success/pages/pay-service-charge.jsp?new
+
+
+pay-service-charge.jsp?new
+
+ยอดชำระ
+ภาษีหัก ณ ที่จ่าย
+
+
+	611000999	บริษัท คิโนะคูนิยะ บุ๊คสโตร์ (ประเทศไทย) จำกัด	1	EPO170401S1709120001	5.00	 บันทึกลงระบบสำเร็จ
+1	611000999	บริษัท คิโนะคูนิยะ บุ๊คสโตร์ (ประเทศไทย) จำกัด	1	EPO170401S1709130001	1.00	 บันทึกลงระบบสำเร็จ
+611001035	บริษัท คิโนะคูนิยะ บุ๊คสโตร์ (ประเทศไทย) จำกัด	1	EPO170401S1709150002	10.00	 บันทึกลงระบบสำเร็จ
+800049991	วัลยา ปัญญาสมาพร	1	EPO170401F1709150013	10.00	 บันทึกลงระบบสำเร็จ
+611001035
+
+
+pay-service-charge
+รับ  รับภาระภาษีเต็มจำนวน       รับภาระภาษีบางส่วน 
+
+
+ function calculateVatFromIncluded(received, vatRate, invoiceVatDetails) { //invoiceVatDetails ตัวลูก ตอนดึง billing
+        var rtVat = 0;
+        if(invoiceVatDetails!=null && invoiceVatDetails.length>1){
+            for(i1=0;i1<invoiceVatDetails.length;i1++){
+                rtVat += invoiceVatDetails[i1].vat;
+            }
+        }else{
+            rtVat =  (received / (100 + vatRate)) * vatRate;
+        }
+        return rtVat;
+    }
+
+    		data['accountNo']="1100644";
+		data['aging']=355;
+		data['amount']=8296.77;
+		data['balanceDue']=8877.54;
+		data['billCycle']="16/03/2016 - 15/04/2016";
+		data['billRefNo']="220547775";
+		data['charge']=8296.77;
+		data['checked']=undefined;
+		data['currencyCode']="12";
+		data['deduct']=248.9031;
+		data['discount']=0;
+		data['dueDt']="22/09/2016";
+		data['invoiceDisplay']="บริการโทรศัพท์ระหว่างประเทศ";
+		data['invoiceNo']="220547775";
+		data['invoiceVatDetails']=[{…}];
+		data['issueDt']="02/09/2016";
+		data['rentalCharge']=0;
+		data['status']="ปกติ";
+		data['subNoList']=["TEST009"];
+		data['taxTypeCode']=undefined;
+		data['totalAdj']=0;
+		data['totalCharge']=8877.54;
+		data['totalPaid']=0;
+		data['usageCharge']=8296.77;
+		data['vat']=580.77;
+		data['vatRate']=7;
+
+
+accountNo:"1100644"
+aging:356
+amount:8296.77
+balanceDue:8871.54
+billCycle:"16/03/2016 - 15/04/2016"
+billRefNo:"220547775"
+charge:8296.77
+currencyCode:"12"
+deduct:248.9031
+discount:0
+dueDt:"22/09/2016"
+invoiceDisplay:"บริการโทรศัพท์ระหว่างประเทศ"
+invoiceNo:"220547775"
+invoiceVatDetails:Array(1)
+				0:accountNo:"1100644"
+				amount:8296.77
+				chargeFromDt:null
+				chargeToDt:null
+				dueDt:null
+				id:null
+				invoiceId:null
+				invoiceNo:"220547775"
+				issueDt:null
+				taxTypeCode:"VT07"
+				updateDttm:null
+				updateUser:null
+				vat:580.77
+				__proto__:Object
+issueDt:"02/09/2016"
+rentalCharge:0
+status:"ปกติ"
+subNoList:["TEST009"]
+taxTypeCode:undefined
+totalAdj:0
+totalCharge:8877.54
+totalPaid:6
+usageCharge:8296.77
+vat:580.77
+vatRate:7
+__proto__:Object
+
+
+
+=========================== data from offline
+var data = {};
+data['accountNo']="";
+data['aging']=358;
+data['amount']=8296.77;
+data['balanceDue']=8871.93;
+data['billCycle']="16/03/2016-15/04/2016";
+data['billRefNo']=220547775;
+data['charge']=8296.77;
+data['checked']=undefined;
+data['deduct']=248.9;
+data['discount']=0;
+data['dueDt']="02/09/2016";
+data['invoiceNo']=220547775;
+data['issueDt']="";
+data['status']="ปกติ";
+data['totalAdj']=0;
+data['totalCharge']=8877.54;
+data['vat']=580.77;
+data['vatRate']=7;
+var dataArr = [];
+dataArr.push(data);
+view.table.invoiceList.rawData(dataArr);

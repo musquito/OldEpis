@@ -1,0 +1,42 @@
+paymentcontroller > createPaymentServiceJSON
+AppUtil.updateCoupon
+table offline
+	public static class Method {
+		private String code;
+		private String name;
+		private String type;
+		private BigDecimal amount;
+		private String bankCode;
+		private String bankName;
+		private String bankBrnh;
+		private String bankAcct;
+		private Date transferDt;
+		private String bankAcCd;
+		private String chequeNo;
+		private String chequeDt;
+		private String cardNo;
+		private String cardType;
+		private String mnyOrderNo;
+		private String mnyOrderCd;
+		private Date mnyOrderDt;
+		private String billExNo;
+		private String billExCd;
+		private String billExDt;
+		private String couponNo;
+		private String trnfNo;
+		private Boolean isBackDt;
+		private String offsetDocumentNo;
+		private String offsetAccountCode;
+		private String offsetAccountName;
+		private String payChqBankCode;
+		private String payChqBankName;
+		private String payChqBranch;
+		private Date payChqDate;
+
+
+entity
+PayService
+repo
+MoneyTransferRepository
+ChequeRepository
+CreditCardRepository

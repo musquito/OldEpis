@@ -1,0 +1,501 @@
+private void prepareCustomerTaxReceiptTO(List<CustomerTaxReceiptTO> collections, Receipt receipt, PrintReceiptDTO printReceiptDTO/* List<Customer> listCust*/) throws CloneNotSupportedException {
+		Receipt rct = receiptRepo.findOne(receipt.getId());
+		// Fix By EPIS8 29/12/2016 issue no 57
+		String maskCC = AppUtil.maskCreditCardFromString(rct.getPaymentCase(), "************####");
+		String paymentCase = AppUtil.hideWTNumber(maskCC);
+		rct.setPaymentCase(paymentCase);
+		// End Fix By EPIS8 29/12/2016 issue no 57
+		DecimalFormat df = new DecimalFormat();
+		df.setMaximumFractionDigits(2);
+		df.setMinimumFractionDigits(2);
+		df.setMinimumIntegerDigits(1);
+		CustomerTaxReceiptTO customer = new CustomerTaxReceiptTO();
+		CustomerTaxReceiptTO customerInv = null;
+
+
+		if(printReceiptDTO.getCustomers()!=null && printReceiptDTO.getCustomers().size()!=0){
+			for (Customer cust : printReceiptDTO.getCustomers()) {
+			    if (null!=cust.getCustNo()) {
+                    if(cust.getCustNo().equalsIgnoreCase(rct.getAccountNo())){
+                        //Header Information
+                        customer.setReceiptType(rct.getType());
+                        //Customer Information
+                        customer.setCustomerNo(rct.getAccountNo());
+                        customer.setCustomerSubNo(rct.getAccountSubNo());
+                        customer.setCustomerName(rct.getName());
+                        customer.setAddressLine1(rct.getAddrLine1());
+                        customer.setAddressLine2(rct.getAddrLine2());
+                        customer.setTaxId(rct.getTaxNo());
+                        customer.setPaymentType(rct.getPaymentCase());
+                        customer.setBranchPayment(rct.getAccountBranch());
+
+                        customer.setBranchCode(rct.getBranchCode());
+                        customer.setBranchName(calculateBranchName(rct));
+                        customer.setDocumentNo(rct.getNo());
+                        customer.setDocumentDate(new SimpleDateFormat(DateUtil.STANDARD_DATE_TIME_PATTERN_NO_SECONDS, ENGLISH).format(rct.getDocDttm()));//rct.getPayment().getDate().toString()); // format properly
+                        customer.setCustomerType(calculateCustomerTypeCode(rct.getAccountType()));
+
+                        customer.setEgpNo(cust.getEgpNo());
+                        customer.setEgpContract(cust.getEgpContract());
+
+                        //Additional Information
+                        customer.setNoteTxt(rct.getRemark());
+                        //customer.setPromotionTxt(rct.getPromotion());
+                        customer.setPromotionTxt(getPromotionMessage(rct));
+                        //change billing group to other description by NSD
+                        customer.setBillingGroup(rct.getBillingServiceName());
+
+                        //Summary Information
+                        customer.setSummaryAmountBeforeVat(df.format(rct.getCharge().add(rct.getDiscount()))); // format
+                        customer.setSummaryDiscount(df.format(rct.getDiscount()));
+                        customer.setSummaryAmountSumBeforeVat(df.format(rct.getCharge()));
+                        customer.setSummaryVat(df.format(rct.getVat()));
+                        //customer.setSummaryAmountSumAfterVat(df.format(rct.getTotalCharge().subtract(rct.getAfterSaleDiscount())));
+
+					BigDecimal afterSaleDiscount = (rct.getAfterSaleDiscount()!=null)?rct.getAfterSaleDiscount():BigDecimal.ZERO;
+					BigDecimal afterSaleDiscVat = (rct.getAfterSaleDiscVat()!=null)?rct.getAfterSaleDiscVat():BigDecimal.ZERO;
+					//customer.setSummaryAmountSumAfterVat(df.format(rct.getTotalCharge().subtract(afterSaleDiscount).subtract(afterSaleDiscVat)));//by NSD 05-04-2017
+					customer.setSummaryAmountSumAfterVat(df.format(rct.getTotalCharge()));//by NSD 28-04-2017
+					customer.setAdditionalDiscountAfterVat(df.format(afterSaleDiscount));
+					//customer.setAmountPaid(df.format(rct.getTotalCharge().subtract(afterSaleDiscount)));
+					customer.setAmountPaid(df.format(rct.getTotalCharge().subtract(afterSaleDiscount).subtract(afterSaleDiscVat)));
+
+                        //Detail
+                        int i = 1;
+                        List<Invoice> invoices = invoiceRepo.findByReceiptId(rct.getId());
+                        for(Invoice inv : invoices) {
+                            if(!CollectionUtils.isEmpty(inv.getInvoiceVatDetails()) && inv.getInvoiceVatDetails().size()>1){
+                                for(InvoiceVatDetail dtl: inv.getInvoiceVatDetails()){
+                                    customerInv = (CustomerTaxReceiptTO) customer.clone();
+                                    customerInv.setOrderNo(String.valueOf(i++));
+                                    customerInv.setInvoiceNo(!inv.getNo().equals("0")? inv.getNo():"-");
+                                    customerInv.setPaymentCycle(!StringUtils.isEmpty(inv.getBillCycle())? inv.getBillCycle(): "-");
+
+                                    customerInv.setAmountBeforeVat(df.format(dtl.getAmount()));
+                                    customerInv.setDiscount(df.format(inv.getDiscount()));//wait for asking
+                                    customerInv.setAmountSumBeforeVat(df.format(dtl.getAmount()));
+                                    if(null!=dtl.getVat() && !StringUtils.equals(dtl.getTaxTypeCode(), TAX_CODE_NONVAT)){
+                                        customerInv.setVat(df.format(dtl.getVat()));
+                                    }else{
+                                        customerInv.setVat("-");
+                                    }
+                                    customerInv.setAmountSumAfterVat(df.format(dtl.getAmount().add(dtl.getVat())));
+
+                                    customerInv.setReceiptType(rct.getType());
+                                    customerInv.setCurrencyRate(rct.getPayment().getCurrencyRate());
+                                    if (null!=customerInv.getCurrencyRate()) {
+                                        AmountBeforeVatTH = inv.getCharge().add(inv.getDiscount());
+                                        AmountBeforeVatTH = AmountBeforeVatTH.multiply(customerInv.getCurrencyRate());
+                                        customerInv.setAmountBeforeVatTH(AmountBeforeVatTH);
+                                        customerInv.setVatRate(rct.getVatRate());
+
+                                        AmountSumAfterVatTH = (inv.getCharge().add(inv.getDiscount())).add(inv.getVat());
+                                        AmountSumAfterVatTH = AmountSumAfterVatTH.multiply(customerInv.getCurrencyRate());
+                                        customerInv.setAmountSumAfterVatTH(AmountSumAfterVatTH);
+                                    }
+                                    collections.add(customerInv);
+                                }
+                            }else{
+                                customerInv = (CustomerTaxReceiptTO) customer.clone();
+                                customerInv.setOrderNo(String.valueOf(i++));
+                                customerInv.setInvoiceNo(!inv.getNo().equals("0")? inv.getNo():"-");
+                                
+                                customerInv.setPaymentCycle(!StringUtils.isEmpty(inv.getBillCycle())? inv.getBillCycle(): "-");
+
+                                customerInv.setAmountBeforeVat(df.format(inv.getCharge().add(inv.getDiscount())));
+                                customerInv.setDiscount(df.format(inv.getDiscount()));
+                                customerInv.setAmountSumBeforeVat(df.format(inv.getCharge()));
+                                if(null!=inv.getVat()){
+                                    customerInv.setVat(df.format(inv.getVat()));
+                                }else{
+                                    customerInv.setVat("-");
+                                }
+                                customerInv.setAmountSumAfterVat(df.format(inv.getTotalCharge()));
+
+
+                                customerInv.setReceiptType(rct.getType());
+                                customerInv.setCurrencyRate(rct.getPayment().getCurrencyRate());
+                                if (null!=customerInv.getCurrencyRate()) {
+                                    AmountBeforeVatTH = inv.getCharge().add(inv.getDiscount());
+                                    AmountBeforeVatTH = AmountBeforeVatTH.multiply(customerInv.getCurrencyRate());
+                                    customerInv.setAmountBeforeVatTH(AmountBeforeVatTH);
+                                    customerInv.setVatRate(rct.getVatRate());
+
+                                    AmountSumAfterVatTH = (inv.getCharge().add(inv.getDiscount())).add(inv.getVat());
+                                    AmountSumAfterVatTH = AmountSumAfterVatTH.multiply(customerInv.getCurrencyRate());
+                                    customerInv.setAmountSumAfterVatTH(AmountSumAfterVatTH);
+                                }
+                                collections.add(customerInv);
+                            }
+                        }
+                    }
+                } else {
+                    egpMapFind = egpMapRepo.findByReceiptNo(rct.getNo());//W3P 28-FEB-2017 set egpNo and egpContract
+
+                    //Header Information
+                    customer.setReceiptType(rct.getType());
+                    //Customer Information
+                    customer.setCustomerNo(rct.getAccountNo());
+                    customer.setCustomerSubNo(rct.getAccountSubNo());
+                    customer.setCustomerName(rct.getName());
+                    customer.setAddressLine1(rct.getAddrLine1());
+                    customer.setAddressLine2(rct.getAddrLine2());
+                    customer.setTaxId(rct.getTaxNo());
+                    customer.setPaymentType(rct.getPaymentCase());
+                    customer.setBranchPayment(rct.getAccountBranch());
+
+                    customer.setBranchCode(rct.getBranchCode());
+                    customer.setBranchName(calculateBranchName(rct));
+                    customer.setDocumentNo(rct.getNo());
+                    customer.setDocumentDate(new SimpleDateFormat(DateUtil.STANDARD_DATE_TIME_PATTERN_NO_SECONDS, ENGLISH).format(rct.getDocDttm()));//rct.getPayment().getDate().toString()); // format properly
+                    customer.setCustomerType(calculateCustomerTypeCode(rct.getAccountType()));
+
+
+                    customer.setEgpNo(cust.getEgpNo()!=null?cust.getEgpNo():egpMapFind.size()>0?null!=egpMapFind.get(0).getEgpNo()?!egpMapFind.get(0).getEgpNo().equalsIgnoreCase("")?egpMapFind.get(0).getEgpNo():"":"":"");
+                    customer.setEgpContract(cust.getEgpContract()!=null?cust.getEgpContract():egpMapFind.size()>0?null!=egpMapFind.get(0).getEgpContract()?!egpMapFind.get(0).getEgpContract().equalsIgnoreCase("")?egpMapFind.get(0).getEgpContract():"":"":"");
+
+                    //Additional Information
+                    customer.setNoteTxt(rct.getRemark());
+                    //customer.setPromotionTxt(rct.getPromotion());
+                    customer.setPromotionTxt(getPromotionMessage(rct));
+
+                    //Summary Information
+                    customer.setSummaryAmountBeforeVat(df.format(rct.getCharge().add(rct.getDiscount()))); // format
+                    customer.setSummaryDiscount(df.format(rct.getDiscount()));
+                    customer.setSummaryAmountSumBeforeVat(df.format(rct.getCharge()));
+                    customer.setSummaryVat(df.format(rct.getVat()));
+                    //customer.setSummaryAmountSumAfterVat(df.format(rct.getTotalCharge().subtract(rct.getAfterSaleDiscount())));
+                    BigDecimal afterSaleDiscount = (rct.getAfterSaleDiscount()!=null)?rct.getAfterSaleDiscount():BigDecimal.ZERO;
+                    BigDecimal afterSaleDiscVat = (rct.getAfterSaleDiscVat()!=null)?rct.getAfterSaleDiscVat():BigDecimal.ZERO;
+
+                    customer.setSummaryAmountSumAfterVat(df.format(rct.getTotalCharge().subtract(afterSaleDiscount).subtract(afterSaleDiscVat)));//by NSD 05-04-2017
+                    customer.setAdditionalDiscountAfterVat(df.format(afterSaleDiscount));
+                    customer.setAmountPaid(df.format(rct.getTotalCharge().subtract(afterSaleDiscount)));
+
+                    customer.setBillingGroup(rct.getBillingServiceName());
+
+                    //get receipt format
+                    String titleReceiptName = "RECEIVE_WH";
+                    if (rct.getFlgHeader()!=null && rct.getLanguage()!=null) {
+                        titleReceiptName = getReceiptName(rct.getFlgHeader(),rct.getLanguage());
+                    } else {
+						titleReceiptName = episService.getReceiptNameByreceiptId(rct.getId().toString());
+                    }
+
+                    customer.setReceiptFormat(titleReceiptName);
+
+                    //Detail
+                    int i = 1;
+                    List<Invoice> invoices = invoiceRepo.findByReceiptId(rct.getId());
+                    for(Invoice inv : invoices) {
+                        if(!CollectionUtils.isEmpty(inv.getInvoiceVatDetails()) && inv.getInvoiceVatDetails().size()>1){
+                            for(InvoiceVatDetail dtl: inv.getInvoiceVatDetails()){
+                                customerInv = (CustomerTaxReceiptTO) customer.clone();
+                                customerInv.setOrderNo(String.valueOf(i++));
+                                customerInv.setInvoiceNo(!inv.getNo().equals("0")? inv.getNo():"-");
+                                customerInv.setPaymentCycle(!StringUtils.isEmpty(inv.getBillCycle())? inv.getBillCycle(): "-");
+
+                                customerInv.setAmountBeforeVat(df.format(dtl.getAmount()));
+                                customerInv.setDiscount(df.format(inv.getDiscount()));//wait for asking
+                                customerInv.setAmountSumBeforeVat(df.format(dtl.getAmount()));
+                                if(null!=dtl.getVat() && !StringUtils.equals(dtl.getTaxTypeCode(), TAX_CODE_NONVAT)){
+                                    customerInv.setVat(df.format(dtl.getVat()));
+                                }else{
+                                    customerInv.setVat("-");
+                                }
+                                customerInv.setAmountSumAfterVat(df.format(dtl.getAmount().add(dtl.getVat())));
+
+                                customerInv.setReceiptType(rct.getType());
+                                customerInv.setCurrencyRate(rct.getPayment().getCurrencyRate());
+                                if (null!=customerInv.getCurrencyRate()) {
+                                    AmountBeforeVatTH = inv.getCharge().add(inv.getDiscount());
+                                    AmountBeforeVatTH = AmountBeforeVatTH.multiply(customerInv.getCurrencyRate());
+                                    customerInv.setAmountBeforeVatTH(AmountBeforeVatTH);
+                                    customerInv.setVatRate(rct.getVatRate());
+
+                                    AmountSumAfterVatTH = (inv.getCharge().add(inv.getDiscount())).add(inv.getVat());
+                                    AmountSumAfterVatTH = AmountSumAfterVatTH.multiply(customerInv.getCurrencyRate());
+                                    customerInv.setAmountSumAfterVatTH(AmountSumAfterVatTH);
+                                }
+                                collections.add(customerInv);
+                            }
+                        }else{
+                            customerInv = (CustomerTaxReceiptTO) customer.clone();
+                            customerInv.setOrderNo(String.valueOf(i++));
+                            customerInv.setInvoiceNo(!inv.getNo().equals("0")? inv.getNo():"-");
+                            customerInv.setPaymentCycle(!StringUtils.isEmpty(inv.getBillCycle())? inv.getBillCycle(): "-");
+                            customerInv.setAmountBeforeVat(df.format(inv.getCharge().add(inv.getDiscount())));
+                            customerInv.setDiscount(df.format(inv.getDiscount()));
+                            customerInv.setAmountSumBeforeVat(df.format(inv.getCharge()));
+                            if(null != inv.getVat()){
+                                customerInv.setVat(df.format(inv.getVat()));
+                            }else{
+                                customerInv.setVat("-");
+                            }
+                            customerInv.setAmountSumAfterVat(df.format(inv.getTotalCharge()));
+                            customerInv.setReceiptType(rct.getType());
+                            customerInv.setCurrencyRate(rct.getPayment().getCurrencyRate());
+                            if (null!=customerInv.getCurrencyRate()) {
+                                AmountBeforeVatTH = inv.getCharge().add(inv.getDiscount());
+                                AmountBeforeVatTH=AmountBeforeVatTH.multiply(customerInv.getCurrencyRate());
+                                customerInv.setAmountBeforeVatTH(AmountBeforeVatTH);
+                                customerInv.setVatRate(rct.getVatRate());
+                                if(null!=inv.getVat()){
+                                    AmountSumAfterVatTH = (inv.getCharge().add(inv.getDiscount())).add(inv.getVat());
+                                }else{
+                                    AmountSumAfterVatTH = (inv.getCharge().add(inv.getDiscount()));
+                                }
+                                AmountSumAfterVatTH = AmountSumAfterVatTH.multiply(customerInv.getCurrencyRate());
+                                customerInv.setAmountSumAfterVatTH(AmountSumAfterVatTH);
+                            }
+
+                            collections.add(customerInv);
+                        }
+                    }
+                }
+			}
+		}else{
+			egpMapFind = egpMapRepo.findByReceiptNo(receipt.getNo());//W3P 28-FEB-2017 set egpNo and egpContract
+
+			//Header Information
+			customer.setReceiptType(rct.getType());
+			//Customer Information
+			customer.setCustomerNo(rct.getAccountNo());
+			customer.setCustomerSubNo(rct.getAccountSubNo());
+			customer.setCustomerName(rct.getName());
+			customer.setAddressLine1(rct.getAddrLine1());
+			customer.setAddressLine2(rct.getAddrLine2());
+			customer.setTaxId(rct.getTaxNo());
+			customer.setPaymentType(rct.getPaymentCase());
+			customer.setBranchPayment(rct.getAccountBranch());
+
+			customer.setBranchCode(rct.getBranchCode());
+			customer.setBranchName(calculateBranchName(rct));
+			customer.setDocumentNo(rct.getNo());
+			customer.setDocumentDate(new SimpleDateFormat(DateUtil.STANDARD_DATE_TIME_PATTERN_NO_SECONDS, ENGLISH).format(rct.getDocDttm()));//rct.getPayment().getDate().toString()); // format properly
+			customer.setCustomerType(calculateCustomerTypeCode(rct.getAccountType()));
+
+
+			customer.setEgpNo(egpMapFind.size()>0?null!=egpMapFind.get(0).getEgpNo()?!egpMapFind.get(0).getEgpNo().equalsIgnoreCase("")?egpMapFind.get(0).getEgpNo():"":"":"");
+			customer.setEgpContract(egpMapFind.size()>0?null!=egpMapFind.get(0).getEgpContract()?!egpMapFind.get(0).getEgpContract().equalsIgnoreCase("")?egpMapFind.get(0).getEgpContract():"":"":"");
+
+			//Additional Information
+			customer.setNoteTxt(rct.getRemark());
+			//customer.setPromotionTxt(rct.getPromotion());
+			customer.setPromotionTxt(getPromotionMessage(rct));
+
+			//Summary Information
+			customer.setSummaryAmountBeforeVat(df.format(rct.getCharge().add(rct.getDiscount()))); // format
+			customer.setSummaryDiscount(df.format(rct.getDiscount()));
+			customer.setSummaryAmountSumBeforeVat(df.format(rct.getCharge()));
+			customer.setSummaryVat(df.format(rct.getVat()));
+			//customer.setSummaryAmountSumAfterVat(df.format(rct.getTotalCharge().subtract(rct.getAfterSaleDiscount())));
+			BigDecimal afterSaleDiscount = (rct.getAfterSaleDiscount()!=null)?rct.getAfterSaleDiscount():BigDecimal.ZERO;
+			BigDecimal afterSaleDiscVat = (rct.getAfterSaleDiscVat()!=null)?rct.getAfterSaleDiscVat():BigDecimal.ZERO;
+
+			//customer.setSummaryAmountSumAfterVat(df.format(rct.getTotalCharge().subtract(afterSaleDiscount).subtract(afterSaleDiscVat)));//by NSD 05-04-2017
+			customer.setSummaryAmountSumAfterVat(df.format(rct.getTotalCharge()));//by NSD 28-04-2017
+			customer.setAdditionalDiscountAfterVat(df.format(afterSaleDiscount));
+			//customer.setAmountPaid(df.format(rct.getTotalCharge().subtract(afterSaleDiscount)));
+			customer.setAmountPaid(df.format(rct.getTotalCharge().subtract(afterSaleDiscount).subtract(afterSaleDiscVat)));
+
+			customer.setBillingGroup(rct.getBillingServiceName());
+
+			//Detail
+			int i = 1;
+			List<Invoice> invoices = invoiceRepo.findByReceiptId(rct.getId());
+			for(Invoice inv : invoices) {
+				if(!CollectionUtils.isEmpty(inv.getInvoiceVatDetails()) && inv.getInvoiceVatDetails().size()>1){
+					for(InvoiceVatDetail dtl: inv.getInvoiceVatDetails()){
+						customerInv = (CustomerTaxReceiptTO) customer.clone();
+						customerInv.setOrderNo(String.valueOf(i++));
+						customerInv.setInvoiceNo(!inv.getNo().equals("0")? inv.getNo():"-");
+						customerInv.setPaymentCycle(!StringUtils.isEmpty(inv.getBillCycle())? inv.getBillCycle(): "-");
+
+						customerInv.setAmountBeforeVat(df.format(dtl.getAmount()));
+						customerInv.setDiscount(df.format(inv.getDiscount()));//wait for asking
+						customerInv.setAmountSumBeforeVat(df.format(dtl.getAmount()));
+						if(null!=dtl.getVat() && !StringUtils.equals(dtl.getTaxTypeCode(), TAX_CODE_NONVAT)){
+							customerInv.setVat(df.format(dtl.getVat()));
+						}else{
+							customerInv.setVat("-");
+						}
+						customerInv.setAmountSumAfterVat(df.format(dtl.getAmount().add(dtl.getVat())));
+
+						customerInv.setReceiptType(rct.getType());
+						customerInv.setCurrencyRate(rct.getPayment().getCurrencyRate());
+						if (null!=customerInv.getCurrencyRate()) {
+							AmountBeforeVatTH = inv.getCharge().add(inv.getDiscount());
+							AmountBeforeVatTH = AmountBeforeVatTH.multiply(customerInv.getCurrencyRate());
+							customerInv.setAmountBeforeVatTH(AmountBeforeVatTH);
+							customerInv.setVatRate(rct.getVatRate());
+
+							AmountSumAfterVatTH = (inv.getCharge().add(inv.getDiscount())).add(inv.getVat());
+							AmountSumAfterVatTH = AmountSumAfterVatTH.multiply(customerInv.getCurrencyRate());
+							customerInv.setAmountSumAfterVatTH(AmountSumAfterVatTH);
+						}
+						collections.add(customerInv);
+					}
+				}else{
+					customerInv = (CustomerTaxReceiptTO) customer.clone();
+					customerInv.setOrderNo(String.valueOf(i++));
+					customerInv.setInvoiceNo(!inv.getNo().equals("0")? inv.getNo():"-");
+					customerInv.setPaymentCycle(!StringUtils.isEmpty(inv.getBillCycle())? inv.getBillCycle(): "-");
+					customerInv.setAmountBeforeVat(df.format(inv.getCharge().add(inv.getDiscount())));
+					customerInv.setDiscount(df.format(inv.getDiscount()));
+					customerInv.setAmountSumBeforeVat(df.format(inv.getCharge()));
+					if(null != inv.getVat()){
+						customerInv.setVat(df.format(inv.getVat()));
+					}else{
+						customerInv.setVat("-");
+					}
+					customerInv.setAmountSumAfterVat(df.format(inv.getTotalCharge()));
+					customerInv.setReceiptType(rct.getType());
+					customerInv.setCurrencyRate(rct.getPayment().getCurrencyRate());
+					if (null!=customerInv.getCurrencyRate()) {
+						AmountBeforeVatTH = inv.getCharge().add(inv.getDiscount());
+						AmountBeforeVatTH=AmountBeforeVatTH.multiply(customerInv.getCurrencyRate());
+						customerInv.setAmountBeforeVatTH(AmountBeforeVatTH);
+						customerInv.setVatRate(rct.getVatRate());
+						if(null!=inv.getVat()){
+							AmountSumAfterVatTH = (inv.getCharge().add(inv.getDiscount())).add(inv.getVat());
+						}else{
+							AmountSumAfterVatTH = (inv.getCharge().add(inv.getDiscount()));
+						}
+						AmountSumAfterVatTH = AmountSumAfterVatTH.multiply(customerInv.getCurrencyRate());
+						customerInv.setAmountSumAfterVatTH(AmountSumAfterVatTH);
+					}
+
+					collections.add(customerInv);
+				}
+			}
+		}
+
+	}
+
+    @RequestMapping(value="/printPaymentReceipt.pdf", method=RequestMethod.POST)
+    public void printPaymentReceipt(HttpServletRequest request, HttpServletResponse response, PrintReceiptDTO printReceiptDTO, List<Invoice> invoiceList
+            ) throws Exception {
+        String receiptLang = printReceiptDTO.getReceiptLang();
+        String billingGroup = printReceiptDTO.getBillingGroup();
+        String receiptFormat = printReceiptDTO.getReceiptFormat();
+        String note = printReceiptDTO.getNote();
+
+        boolean isSubstitute = (printReceiptDTO.getSubstitute()!=null)?Boolean.valueOf(printReceiptDTO.getSubstitute()):false;
+        
+        String JASPER_JRXML_FILENAME = getJasperFileName(printReceiptDTO, invoiceList);
+    
+        Map<String, Object> parameters = new HashMap<String, Object>();
+        Officer officer = null;
+        if(AppUtil.isCollectionHasValue(printReceiptDTO.getReceipts())) {
+            officer = officerRepo.findByName(request.getUserPrincipal().getName());
+        }
+        List<JasperPrint> jasperPrints = new ArrayList<JasperPrint>();
+        for (Receipt rct : printReceiptDTO.getReceipts()) {
+//          for (Customer cust : printReceiptDTO.getCustomers()) {
+//              if(cust.getCustNo().equalsIgnoreCase(rct.getAccountNo())) {
+                //String REPORT_OUTPUT_FILENAME = request.getUserPrincipal().getName()+"-EpisPaymentReceipt";
+
+                    List<CustomerTaxReceiptTO> collections = new ArrayList<CustomerTaxReceiptTO>();
+                    prepareCustomerTaxReceiptTO(collections, rct, printReceiptDTO);
+                    if(AppUtil.isCollectionHasValue(collections)) {
+                        CustomerTaxReceiptTO documentObject = (CustomerTaxReceiptTO)collections.get(0);
+                        //documentObject.setImagePathRpt(context.getRealPath("images")+File.separatorChar+"CATTelecom_Logo.png");
+                        /*if(documentObject.getCustomerNo()!=null &&
+                                (documentObject.getCustomerNo().equals("611001271") || documentObject.getCustomerNo().equals("611001305")) ){
+                            JASPER_JRXML_FILENAME="EpisPaymentReceipt";
+                        }*/
+                        
+                        documentObject.setDocumentDate(documentObject.getDocumentDate());
+                        documentObject.setBranchCode(documentObject.getBranchCode());
+                        documentObject.setBranchName(documentObject.getBranchName());
+                        documentObject.setDocumentNo(documentObject.getDocumentNo());
+                        documentObject.setUserName(officer.getGivenName() + " " + officer.getFamilyName());
+                        if(!"1".equals(printReceiptDTO.getCheckSpecial())){
+                            documentObject.setNote(note);
+                            documentObject.setAmountBeforeVatTax(documentObject.getAmountBeforeVat());
+                            documentObject.setDiscountTax(documentObject.getDiscount());
+                            documentObject.setAmountSumBeforeVatTax(documentObject.getAmountSumBeforeVat());
+                            documentObject.setVatTax(documentObject.getVat());
+                            documentObject.setAmountSumAfterVat(documentObject.getAmountSumAfterVat());
+                        }
+                        if (null!=documentObject.getCurrencyRate()) {
+                            DecimalFormatSymbols symbols = new DecimalFormatSymbols();
+                            symbols.setGroupingSeparator(',');
+                            symbols.setDecimalSeparator('.');
+                            String pattern = "#,##0.0#";
+                            DecimalFormat decimalFormat = new DecimalFormat(pattern, symbols);
+                            decimalFormat.setParseBigDecimal(true);
+                            BigDecimal hundPer = new BigDecimal("100");
+                            BigDecimal hundPerVat = null!=documentObject.getVatRate()?hundPer.add(documentObject.getVatRate()):hundPer.add(BigDecimal.ZERO);
+                                summaryAmountBeforeVatTH = (BigDecimal) decimalFormat.parse(documentObject.getSummaryAmountSumAfterVat());
+                                summaryAmountBeforeVatTH = summaryAmountBeforeVatTH.multiply(documentObject.getCurrencyRate());
+                                //summaryAmountBeforeVatTH = summaryAmountBeforeVatTH.multiply(hundPer).divide(hundPerVat, 2, BigDecimal.ROUND_FLOOR);
+                                summaryAmountBeforeVatTH = summaryAmountBeforeVatTH.multiply(hundPer).divide(hundPerVat, 2, BigDecimal.ROUND_HALF_UP);//by NSD 27-04-2017
+                                documentObject.setSummaryAmountBeforeVatTH(summaryAmountBeforeVatTH);
+
+                                summaryAmountSumAfterVatTH = (BigDecimal) decimalFormat.parse(documentObject.getSummaryAmountSumAfterVat());
+                                summaryAmountSumAfterVatTH = summaryAmountSumAfterVatTH.multiply(documentObject.getCurrencyRate());
+                                documentObject.setSummaryAmountSumAfterVatTH(summaryAmountSumAfterVatTH);
+
+                                summaryDiscountTH = (BigDecimal) decimalFormat.parse(documentObject.getSummaryDiscount());
+                                summaryDiscountTH = summaryDiscountTH.multiply(documentObject.getCurrencyRate());
+                                documentObject.setSummaryDiscountTH(summaryDiscountTH);
+                                
+                                summaryAmountSumBeforeVatTH = (BigDecimal) decimalFormat.parse(documentObject.getSummaryAmountSumBeforeVat());
+                                summaryAmountSumBeforeVatTH = summaryAmountBeforeVatTH.subtract(summaryDiscountTH);
+                                documentObject.setSummaryAmountSumBeforeVatTH(summaryAmountSumBeforeVatTH);
+        
+                                summaryVatTH = summaryAmountSumAfterVatTH.subtract(summaryAmountBeforeVatTH);
+                                documentObject.setSummaryVatTH(summaryVatTH);
+        
+                                additionalDiscountAfterVatTH = (BigDecimal) decimalFormat.parse(documentObject.getAdditionalDiscountAfterVat());
+                                additionalDiscountAfterVatTH = additionalDiscountAfterVatTH.multiply(documentObject.getCurrencyRate());
+                                documentObject.setAdditionalDiscountAfterVatTH(additionalDiscountAfterVatTH);
+                                
+                        }
+                        // setting billing Group
+                        //documentObject.setBillingGroup(billingGroup);
+                        if(StringUtils.equals(rct.getFlgHeader(), FLG_HEADER_1)){
+                            receiptFormat = RECEIPT_FORMAT_RECEIVE_WH;
+                        }else if(StringUtils.equals(rct.getFlgHeader(), FLG_HEADER_2)){
+                            receiptFormat = RECEIPT_FORMAT_RECEIVE_ONLY;
+                        }else if(StringUtils.equals(rct.getFlgHeader(), FLG_HEADER_3)){
+                            receiptFormat = RECEIPT_FORMAT_WH_ONLY;
+                        }
+                        receiptFormat = documentObject.getReceiptFormat()!=null?documentObject.getReceiptFormat():receiptFormat;
+                        documentObject.setReceiptFormat(receiptFormat);
+                        documentObject.setSubstitute(isSubstitute);
+                        logger.info("getReceiptType===>["+documentObject.getReceiptType()+"]");
+                        
+                        // set Branch Name For English
+                        //if(!StringUtils.isEmpty(printReceiptDTO.getReceiptLang())
+                        //      && printReceiptDTO.getReceiptLang().equals(AppConstants.LANGUAGE_KEY.ENG.name()))
+                            documentObject.setBranchName(calculateBranchNameForReceiptLang(rct,receiptLang));
+                        // set Title for Copy
+                        if(printReceiptDTO.isCopy())
+                            getReceiptTitle(documentObject,isSubstitute,receiptLang);
+                        
+                        if(isSubstitute)
+                            getReprintVersion(documentObject,rct.getId(),printReceiptDTO.getReason(),printReceiptDTO.getReprint(),receiptLang);
+                            
+                        if(StringUtils.isNotBlank(receiptFormat))
+                            setReceiptFormat(rct.getId(),receiptFormat);
+                        
+                        List<CustomerTaxReceiptTO> printCollections = new ArrayList<CustomerTaxReceiptTO>();
+                        for(int i=0; i<collections.size(); i++) {
+                            printCollections.add((CustomerTaxReceiptTO)collections.get(i));
+                        }
+                        parameters.put("ReportSource", documentObject);
+        
+                        response.setContentType("application/pdf");
+                        
+                        net.sf.jasperreports.engine.JasperReport report = JasperCompileManager.compileReport(context.getRealPath(JASPER_JRXML_PATH) + File.separatorChar + JASPER_JRXML_FILENAME + FILE_TYPE_JRXML);
+                        JRDataSource dataSource = (collections != null && !collections.isEmpty()) ? new JRBeanCollectionDataSource(collections) : new JREmptyDataSource();
+                        jasperPrints.add(JasperFillManager.fillReport(report, parameters, dataSource));
+                    }
+//              }
+//          }
+        }
+        pushReportToOutputStream(response, jasperPrints);
+    }
